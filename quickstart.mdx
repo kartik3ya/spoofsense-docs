@@ -1,0 +1,94 @@
+---
+title: "Quickstart"
+description: "Your first liveness check in five minutes"
+---
+
+<Steps>
+  <Step title="Get an API key">
+    Sign in at [app.spoofsense.ai](https://app.spoofsense.ai) and create a key under **Dashboard → API keys**. Keys look like `sk_live_…` and are shown **once** — we store only a hash.
+
+    ```bash
+    export SPOOFSENSE_API_KEY="sk_live_..."
+    ```
+
+    <Warning>The secret key must only ever live on your server. Never ship it in a browser, mobile app, or public repo.</Warning>
+  </Step>
+
+  <Step title="Run a liveness check">
+    Send any face image — as a file, base64 JSON, or a URL. See [Image inputs](/guides/image-inputs) for all formats.
+
+    <CodeGroup>
+    ```bash cURL
+    curl -X POST https://api.spoofsense.ai/v1/liveness_detection \
+      -H "Authorization: Bearer $SPOOFSENSE_API_KEY" \
+      -F "file=@selfie.jpg"
+    ```
+
+    ```javascript Node.js
+    import fs from "node:fs";
+
+    const form = new FormData();
+    form.append("file", new Blob([fs.readFileSync("selfie.jpg")]), "selfie.jpg");
+
+    const res = await fetch("https://api.spoofsense.ai/v1/liveness_detection", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.SPOOFSENSE_API_KEY}` },
+      body: form,
+    });
+    console.log(await res.json());
+    ```
+
+    ```python Python
+    import os, requests
+
+    res = requests.post(
+        "https://api.spoofsense.ai/v1/liveness_detection",
+        headers={"Authorization": f"Bearer {os.environ['SPOOFSENSE_API_KEY']}"},
+        files={"file": open("selfie.jpg", "rb")},
+    )
+    print(res.json())
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Read the decision">
+    ```json Response
+    {
+      "product": "face_liveness",
+      "decision": "real",
+      "genuine_score": 0.9333,
+      "threshold": 0.5,
+      "spoof_type": null,
+      "latency_ms": 190,
+      "credits_remaining": 1240,
+      "session_id": "d2f8…",
+      "request_id": "9b1c…"
+    }
+    ```
+
+    Act on `decision` (`"real"` or `"spoof"`). `genuine_score` and `threshold` are there for tuning and audit — see [Thresholds & scores](/guides/thresholds).
+  </Step>
+
+  <Step title="Try deepfake detection, or both at once">
+    Same request shape, different endpoint:
+
+    ```bash
+    curl -X POST https://api.spoofsense.ai/v1/unified_detection \
+      -H "Authorization: Bearer $SPOOFSENSE_API_KEY" \
+      -F "file=@selfie.jpg"
+    ```
+
+    `/v1/unified_detection` runs both checks and returns `decision: "real"` only when **every** check passes, plus a per-product `checks` object.
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Verify live users with the SDKs" icon="mobile-screen-button" href="/verification-sessions/overview">
+    For onboarding/KYC, don't upload user images yourself — let the SDK capture from the camera with injection protection.
+  </Card>
+  <Card title="API reference" icon="book" href="/api-reference">
+    Every endpoint, parameter, and response field.
+  </Card>
+</CardGroup>

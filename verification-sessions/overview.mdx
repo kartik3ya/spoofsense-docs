@@ -1,0 +1,93 @@
+---
+title: "How sessions work"
+description: "The secure capture flow behind the SDKs and hosted page"
+---
+
+When you're verifying a **live user** (onboarding, KYC, step-up auth), don't accept an image from the client and forward it yourself — a fraudster's client can send anything. Verification sessions move capture into a trusted SDK and keep every decision server-side.
+
+## The flow
+
+<Steps>
+  <Step title="Your backend creates a session">
+    `POST /v1/verification_sessions` with your secret key. You choose the products and thresholds **here, server-side** — the client can never downgrade them. The response contains a single-use client token (`sst_…`), returned exactly once.
+
+    <CodeGroup>
+    ```javascript Node.js
+    const res = await fetch("https://api.spoofsense.ai/v1/verification_sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.SPOOFSENSE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        products: ["face_liveness", "deepfake"], // both = 3 credits
+        reference_id: "user_123",                // your own user/txn id (optional)
+      }),
+    });
+    const session = await res.json();
+    // Hand ONLY session.client_token to your frontend.
+    // Keep session.id server-side to fetch the result later.
+    ```
+
+    ```python Python
+    import os, requests
+
+    res = requests.post(
+        "https://api.spoofsense.ai/v1/verification_sessions",
+        headers={"Authorization": f"Bearer {os.environ['SPOOFSENSE_API_KEY']}"},
+        json={"products": ["face_liveness", "deepfake"], "reference_id": "user_123"},
+    )
+    session = res.json()
+    # Hand ONLY session["client_token"] to your frontend.
+    ```
+
+    ```bash cURL
+    curl -X POST https://api.spoofsense.ai/v1/verification_sessions \
+      -H "Authorization: Bearer $SPOOFSENSE_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"products": ["face_liveness", "deepfake"], "reference_id": "user_123"}'
+    # → { "id": "vs_…", "client_token": "sst_…", "status": "created", … }
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="The client captures and submits">
+    Mount the [Web SDK](/verification-sessions/web), launch the [Android SDK](/verification-sessions/android), or use the [hosted page](/verification-sessions/hosted) with the client token. The SDK captures a frame from the **live camera** (no file uploads), attaches anti-injection signals, and submits it. The submit response is deliberately minimal — the client never sees scores or the decision, so it can't be used as an oracle.
+  </Step>
+
+  <Step title="Your backend reads the result">
+    When the client reports completion, fetch the session by id with your **secret key** and act on it. Treat anything other than `status: "complete"` **and** `decision: "real"` as not verified. See [Results & media](/verification-sessions/results).
+  </Step>
+</Steps>
+
+<Warning>
+The client's "I'm done" callback is a **hint, not proof** — a tampered client can claim anything. The only trustworthy decision is the one your backend reads with the secret key.
+</Warning>
+
+## Session options
+
+All fields on create are optional:
+
+| Field | Default | Notes |
+|---|---|---|
+| `products` | `["face_liveness", "deepfake"]` | Subset of the two product ids. Liveness only = 1 credit, deepfake only = 2, both = 3 |
+| `thresholds` | Org settings | Per-product override, fixed for the whole session |
+| `ttl_seconds` | `900` | Clamped to 60–3600. Session expires if not completed in time |
+| `reference_id` | — | Your own user/transaction id, ≤ 256 chars, echoed on reads |
+| `metadata` | — | Arbitrary JSON object, ≤ 4 KB, echoed on reads |
+
+## Lifecycle
+
+```text
+created ──submit ok──▶ complete
+   │ └──3 failed attempts──▶ failed   (failure_code: ATTEMPTS_EXHAUSTED)
+   └──TTL elapses──▶ expired
+```
+
+- **3 capture attempts** per session — a blurry or faceless capture (`422`) lets the user retry; see [which errors consume an attempt](/guides/errors#which-submit-errors-consume-an-attempt).
+- Creating a session **pre-checks your credit balance**, so you never hand out a token that can't succeed. The charge itself happens when a capture is scored.
+- The `sst_` token is stored hashed, expires with the session, and can never read decisions or media.
+
+## Injection protection
+
+Presentation attacks (photos, screens) are caught by the models. **Injection attacks** — virtual cameras feeding a synthetic stream — can look perfectly genuine, so the SDKs collect integrity signals at capture time. Under the `enforce` policy (console setting), a high-confidence signal such as a known virtual-camera device forces `decision: "spoof"` even when the image itself scores as real. The client is never told this happened; the reason appears only on your server-side result read.

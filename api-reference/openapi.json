@@ -1,0 +1,655 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SpoofSense API",
+    "version": "1.0",
+    "description": "Face liveness and deepfake detection. All errors use the envelope `{\"error\": {\"code\", \"message\"}}`. Input errors (4xx) are never charged."
+  },
+  "servers": [{ "url": "https://api.spoofsense.ai" }],
+  "security": [{ "secretKey": [] }],
+  "tags": [
+    { "name": "Detection", "description": "Stateless checks on an image you already have. Authenticate with your secret key." },
+    { "name": "Verification sessions", "description": "The secure capture flow used by the SDKs and hosted page. Server-side calls use the secret key; client-side calls use the session's sst_ token." },
+    { "name": "Service" }
+  ],
+  "paths": {
+    "/v1/liveness_detection": {
+      "post": {
+        "tags": ["Detection"],
+        "summary": "Face liveness check",
+        "operationId": "livenessDetection",
+        "description": "Checks whether the face in the image is a live capture rather than a presentation attack (printed photo, screen replay, mask). Costs 1 credit.",
+        "requestBody": { "$ref": "#/components/requestBodies/DetectionInput" },
+        "responses": {
+          "200": {
+            "description": "Scored check",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DetectionResponse" },
+                "example": {
+                  "product": "face_liveness",
+                  "decision": "real",
+                  "genuine_score": 0.9333,
+                  "threshold": 0.5,
+                  "spoof_type": null,
+                  "latency_ms": 190,
+                  "credits_remaining": 1240,
+                  "session_id": "d2f8c1e4a90b4f0f8f1f2a3b4c5d6e7f",
+                  "request_id": "9b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/InsufficientCredits" },
+          "413": { "$ref": "#/components/responses/ImageTooLarge" },
+          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "502": { "$ref": "#/components/responses/Upstream" }
+        }
+      }
+    },
+    "/v1/deepfake_detection": {
+      "post": {
+        "tags": ["Detection"],
+        "summary": "Deepfake check",
+        "operationId": "deepfakeDetection",
+        "description": "Checks whether the face in the image is AI-generated or face-swapped. Costs 2 credits. Send the original capture — do not downscale or re-encode; resolution is load-bearing for this model.",
+        "requestBody": { "$ref": "#/components/requestBodies/DetectionInput" },
+        "responses": {
+          "200": {
+            "description": "Scored check",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DetectionResponse" },
+                "example": {
+                  "product": "deepfake",
+                  "decision": "spoof",
+                  "genuine_score": 0.31,
+                  "threshold": 0.5,
+                  "spoof_type": null,
+                  "latency_ms": 240,
+                  "credits_remaining": 1238,
+                  "session_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+                  "request_id": "0f1e2d3c4b5a69788766554433221100"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/InsufficientCredits" },
+          "413": { "$ref": "#/components/responses/ImageTooLarge" },
+          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "502": { "$ref": "#/components/responses/Upstream" }
+        }
+      }
+    },
+    "/v1/unified_detection": {
+      "post": {
+        "tags": ["Detection"],
+        "summary": "Liveness + deepfake in one call",
+        "operationId": "unifiedDetection",
+        "description": "Runs both checks on the same image. The overall `decision` is `real` only when every check passes its threshold; per-product outcomes are in `checks`. Costs 3 credits.",
+        "requestBody": { "$ref": "#/components/requestBodies/DetectionInput" },
+        "responses": {
+          "200": {
+            "description": "Scored checks",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UnifiedResponse" },
+                "example": {
+                  "product": "unified",
+                  "decision": "spoof",
+                  "checks": {
+                    "face_liveness": { "decision": "real", "genuine_score": 0.91, "threshold": 0.5 },
+                    "deepfake": { "decision": "spoof", "genuine_score": 0.31, "threshold": 0.5 }
+                  },
+                  "latency_ms": 430,
+                  "credits_remaining": 1235,
+                  "session_id": {
+                    "face_liveness": "d2f8c1e4a90b4f0f8f1f2a3b4c5d6e7f",
+                    "deepfake": "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+                  },
+                  "request_id": "11223344556677889900aabbccddeeff"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/InsufficientCredits" },
+          "413": { "$ref": "#/components/responses/ImageTooLarge" },
+          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "502": { "$ref": "#/components/responses/Upstream" }
+        }
+      }
+    },
+    "/v1/verification_sessions": {
+      "post": {
+        "tags": ["Verification sessions"],
+        "summary": "Create a verification session",
+        "operationId": "createVerificationSession",
+        "description": "Called from your backend with the secret key. Mints a single-use `sst_` client token — returned exactly once, only its hash is stored. Products and thresholds are fixed here, server-side; the client can never change them. Fails fast with 402 if your balance is empty, so you never hand out a doomed token.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "products": {
+                    "type": "array",
+                    "items": { "type": "string", "enum": ["face_liveness", "deepfake"] },
+                    "description": "Which checks to run on the capture. Defaults to both. Liveness only = 1 credit, deepfake only = 2, both = 3."
+                  },
+                  "thresholds": {
+                    "type": "object",
+                    "description": "Per-product threshold override, e.g. {\"face_liveness\": 0.6}. Values in [0,1]. Defaults to your org settings.",
+                    "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+                  },
+                  "ttl_seconds": {
+                    "type": "integer",
+                    "default": 900,
+                    "minimum": 60,
+                    "maximum": 3600,
+                    "description": "How long the session stays usable. Clamped to 60–3600."
+                  },
+                  "reference_id": {
+                    "type": "string",
+                    "maxLength": 256,
+                    "description": "Your own user/transaction id, echoed back on reads."
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "description": "Arbitrary JSON, at most 4096 bytes, echoed back on reads."
+                  }
+                }
+              },
+              "example": { "products": ["face_liveness", "deepfake"], "reference_id": "user_123" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/VerificationSessionCreated" },
+                "example": {
+                  "object": "verification_session",
+                  "id": "vs_1f2e3d4c5b6a79880917263544332211",
+                  "status": "created",
+                  "client_token": "sst_Zk9qX1J2c3Q0dTV2Nnc3eDh5OXow",
+                  "nonce": "8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f",
+                  "products": ["face_liveness", "deepfake"],
+                  "reference_id": "user_123",
+                  "expires_at": "2026-01-01T12:15:00+00:00",
+                  "created_at": "2026-01-01T12:00:00+00:00"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "402": { "$ref": "#/components/responses/InsufficientCredits" }
+        }
+      }
+    },
+    "/v1/verification_sessions/session_info": {
+      "get": {
+        "tags": ["Verification sessions"],
+        "summary": "Peek at a session (client token)",
+        "operationId": "getSessionInfo",
+        "description": "Called by the SDK at mount, authenticated with the `sst_` client token. Returns the session's nonce (required in the submit payload) and status, so an expired or used session fails fast before the camera opens.",
+        "security": [{ "sessionToken": [] }],
+        "responses": {
+          "200": {
+            "description": "Session metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string" },
+                    "status": { "type": "string", "enum": ["created", "complete", "failed", "expired"] },
+                    "nonce": { "type": "string", "description": "Echo this in client_payload.nonce on submit." },
+                    "products": { "type": "array", "items": { "type": "string" } },
+                    "expires_at": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/InvalidSessionToken" },
+          "410": { "$ref": "#/components/responses/SessionExpired" }
+        }
+      }
+    },
+    "/v1/verification_sessions/submit": {
+      "post": {
+        "tags": ["Verification sessions"],
+        "summary": "Submit a capture (client token)",
+        "operationId": "submitCapture",
+        "description": "Called by the SDK with the `sst_` client token. Multipart only — no URLs, no raw bodies, no threshold overrides. The response is deliberately minimal: the untrusted client never sees scores or the decision. 3 attempts per session; capture-fault errors (413, 422, NONCE_MISMATCH) consume an attempt, server-fault errors refund it.",
+        "security": [{ "sessionToken": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The captured selfie frame (JPEG/WebP), from the live camera."
+                  },
+                  "client_payload": {
+                    "type": "string",
+                    "description": "JSON string, at most 8 KB: {\"nonce\": \"<from session_info>\", \"platform\": \"web\", \"sdk_version\": \"…\", \"signals\": {…}, \"integrity_token\": \"…\"}. The nonce is required and must match the session."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Capture scored. No decision or scores are returned to the client — read the result server-side.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string" },
+                    "status": { "type": "string", "enum": ["complete"] },
+                    "credits_remaining": { "type": "integer" }
+                  }
+                },
+                "example": { "id": "vs_1f2e3d4c5b6a79880917263544332211", "status": "complete", "credits_remaining": 1232 }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/InvalidSessionToken" },
+          "402": { "$ref": "#/components/responses/InsufficientCredits" },
+          "409": { "$ref": "#/components/responses/SessionNotPending" },
+          "410": { "$ref": "#/components/responses/SessionExpired" },
+          "413": { "$ref": "#/components/responses/ImageTooLarge" },
+          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "429": { "$ref": "#/components/responses/TooManyAttempts" },
+          "502": { "$ref": "#/components/responses/Upstream" }
+        }
+      }
+    },
+    "/v1/verification_sessions/{id}": {
+      "get": {
+        "tags": ["Verification sessions"],
+        "summary": "Retrieve a session's result",
+        "operationId": "getVerificationSession",
+        "description": "Called from your backend with the secret key. The only trustworthy read of the decision — treat the user as verified only when `status` is `complete` AND `decision` is `real`. When a capture was blocked for suspected injection, `checks` is null and `risk` carries only `{injection_blocked: true, reason: \"suspected_injection\"}` — scores are withheld so flagged sessions can't probe the detectors.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "The vs_… session id.",
+            "example": "vs_1f2e3d4c5b6a79880917263544332211"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/VerificationSession" },
+                "example": {
+                  "object": "verification_session",
+                  "id": "vs_1f2e3d4c5b6a79880917263544332211",
+                  "status": "complete",
+                  "decision": "real",
+                  "checks": {
+                    "face_liveness": { "decision": "real", "genuine_score": 0.94, "threshold": 0.5 },
+                    "deepfake": { "decision": "real", "genuine_score": 0.88, "threshold": 0.5 }
+                  },
+                  "risk": { "attestation": "not_evaluated", "injection_blocked": false, "signals": { "duplicate_image": false } },
+                  "media": { "available": true, "sha256": "c0ffee…", "content_type": "image/jpeg", "expires_at": "2026-02-01T12:00:00+00:00" },
+                  "products": ["face_liveness", "deepfake"],
+                  "reference_id": "user_123",
+                  "metadata": null,
+                  "attempts": 1,
+                  "failure_code": null,
+                  "sdk": { "platform": "web", "version": "0.2.0" },
+                  "created_at": "2026-01-01T12:00:00+00:00",
+                  "expires_at": "2026-01-01T12:15:00+00:00",
+                  "captured_at": "2026-01-01T12:01:10+00:00",
+                  "completed_at": "2026-01-01T12:01:10+00:00"
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/SessionNotFound" }
+        }
+      }
+    },
+    "/v1/verification_sessions/{id}/media": {
+      "get": {
+        "tags": ["Verification sessions"],
+        "summary": "Retrieve the captured selfie",
+        "operationId": "getVerificationSessionMedia",
+        "description": "Called from your backend with the secret key — the sst_ client token can never reach this endpoint. Mints a signed URL to the exact bytes the models scored, valid for 5 minutes; fetch immediately rather than storing the link. Verify the download against `sha256`. Every retrieval is written to your org's media access log. Available as soon as the decision is — the upload happens during capture.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "The vs_… session id.",
+            "example": "vs_1f2e3d4c5b6a79880917263544332211"
+          },
+          {
+            "name": "redirect",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": false },
+            "description": "When true, respond with a 302 straight to the image bytes instead of JSON."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Signed media link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "object": { "type": "string", "enum": ["verification_session_media"] },
+                    "id": { "type": "string" },
+                    "url": { "type": "string", "description": "Signed URL, valid 5 minutes." },
+                    "url_expires_at": { "type": "string", "format": "date-time" },
+                    "sha256": { "type": "string", "description": "Hash of the exact bytes the models scored." },
+                    "content_type": { "type": "string" },
+                    "expires_at": { "type": ["string", "null"], "format": "date-time", "description": "Retention expiry of the stored capture." }
+                  }
+                }
+              }
+            }
+          },
+          "302": { "description": "Redirect to the image bytes (when `redirect=true`)." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/MediaNotAvailable" },
+          "502": { "$ref": "#/components/responses/Upstream" }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": ["Service"],
+        "summary": "Health check",
+        "operationId": "health",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Service is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "products": { "type": "array", "items": { "type": "string" } }
+                  }
+                },
+                "example": { "ok": true, "products": ["face_liveness", "deepfake"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "secretKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Your secret key (sk_live_…), server-side only. Also accepted as an `x-api-key` header."
+      },
+      "sessionToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "A verification session's single-use client token (sst_…), minted by POST /v1/verification_sessions."
+      }
+    },
+    "requestBodies": {
+      "DetectionInput": {
+        "required": true,
+        "description": "The image, in any supported form. Max 10 MB. EXIF orientation is applied automatically.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "data": {
+                  "type": "string",
+                  "description": "Base64-encoded image, or a full data URL. Alias: `image`."
+                },
+                "image_url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "http(s) URL we fetch server-side (10 s timeout). Alias: `url`. Provide either `data` or `image_url`."
+                },
+                "threshold": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Optional per-request decision threshold. Defaults to your org setting (0.5 unless changed)."
+                },
+                "thresholds": {
+                  "type": "object",
+                  "description": "Unified only: per-product thresholds, e.g. {\"face_liveness\": 0.6, \"deepfake\": 0.4}.",
+                  "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+                }
+              }
+            },
+            "example": { "data": "/9j/4AAQSkZJRg…", "threshold": 0.5 }
+          },
+          "multipart/form-data": {
+            "schema": {
+              "type": "object",
+              "required": ["file"],
+              "properties": {
+                "file": { "type": "string", "format": "binary", "description": "The image file. Alias field name: `image`." },
+                "threshold": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            }
+          },
+          "image/*": {
+            "schema": { "type": "string", "format": "binary", "description": "Raw image bytes as the request body." }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" }
+            }
+          }
+        }
+      },
+      "Check": {
+        "type": "object",
+        "properties": {
+          "decision": { "type": "string", "enum": ["real", "spoof"] },
+          "genuine_score": { "type": "number", "description": "Calibrated score in [0,1]; the decision boundary sits at 0.5 across model updates." },
+          "threshold": { "type": "number", "description": "The threshold actually applied." }
+        }
+      },
+      "DetectionResponse": {
+        "type": "object",
+        "properties": {
+          "product": { "type": "string", "enum": ["face_liveness", "deepfake"] },
+          "decision": { "type": "string", "enum": ["real", "spoof"], "description": "genuine_score > threshold" },
+          "genuine_score": { "type": "number", "description": "Calibrated score in [0,1]." },
+          "threshold": { "type": "number", "description": "The threshold actually applied (request override, org setting, or 0.5)." },
+          "spoof_type": { "type": ["string", "null"], "description": "Always null for current models." },
+          "latency_ms": { "type": "integer", "description": "Model inference time." },
+          "credits_remaining": { "type": "integer", "description": "Balance after this call." },
+          "session_id": { "type": "string", "description": "Id of the logged detection session (visible in the console)." },
+          "request_id": { "type": "string", "description": "Quote this when contacting support." }
+        }
+      },
+      "UnifiedResponse": {
+        "type": "object",
+        "properties": {
+          "product": { "type": "string", "enum": ["unified"] },
+          "decision": { "type": "string", "enum": ["real", "spoof"], "description": "\"real\" only when every check passes its threshold." },
+          "checks": {
+            "type": "object",
+            "description": "Per-product outcome.",
+            "properties": {
+              "face_liveness": { "$ref": "#/components/schemas/Check" },
+              "deepfake": { "$ref": "#/components/schemas/Check" }
+            }
+          },
+          "latency_ms": { "type": "integer", "description": "Sum of per-model inference times." },
+          "credits_remaining": { "type": "integer" },
+          "session_id": {
+            "type": "object",
+            "description": "One logged detection session per product.",
+            "additionalProperties": { "type": "string" }
+          },
+          "request_id": { "type": "string" }
+        }
+      },
+      "VerificationSessionCreated": {
+        "type": "object",
+        "properties": {
+          "object": { "type": "string", "enum": ["verification_session"] },
+          "id": { "type": "string", "description": "vs_… id. Keep server-side to fetch the result later." },
+          "status": { "type": "string", "enum": ["created"] },
+          "client_token": { "type": "string", "description": "sst_… token for the SDK. Returned exactly once — only its hash is stored." },
+          "nonce": { "type": "string", "description": "Bound into the submit payload; also available to the SDK via session_info." },
+          "products": { "type": "array", "items": { "type": "string" } },
+          "reference_id": { "type": ["string", "null"] },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "VerificationSession": {
+        "type": "object",
+        "properties": {
+          "object": { "type": "string", "enum": ["verification_session"] },
+          "id": { "type": "string" },
+          "status": { "type": "string", "enum": ["created", "complete", "failed", "expired"] },
+          "decision": { "type": ["string", "null"], "enum": ["real", "spoof", null], "description": "Verified = status \"complete\" AND decision \"real\"." },
+          "checks": {
+            "type": ["object", "null"],
+            "description": "Per-product outcome. Null until complete, and null on injection-blocked sessions.",
+            "additionalProperties": { "$ref": "#/components/schemas/Check" }
+          },
+          "risk": {
+            "type": "object",
+            "properties": {
+              "attestation": { "type": "string", "description": "Device attestation status, e.g. not_evaluated." },
+              "injection_blocked": { "type": "boolean", "description": "True when the capture was rejected for suspected injection (decision forced to spoof, checks withheld)." },
+              "reason": { "type": "string", "description": "Present only when injection_blocked: \"suspected_injection\"." },
+              "signals": {
+                "type": "object",
+                "description": "Soft risk signals, e.g. duplicate_image: this exact capture appeared in another of your sessions.",
+                "additionalProperties": true
+              }
+            }
+          },
+          "media": {
+            "type": "object",
+            "description": "Whether the captured selfie is retrievable via the /media sub-resource.",
+            "properties": {
+              "available": { "type": "boolean" },
+              "sha256": { "type": "string", "description": "Present when available." },
+              "content_type": { "type": "string", "description": "Present when available." },
+              "expires_at": { "type": ["string", "null"], "format": "date-time", "description": "Retention expiry. Present when available." },
+              "reason": { "type": "string", "enum": ["not_captured", "storage_disabled", "expired", "unavailable"], "description": "Present when not available." }
+            }
+          },
+          "products": { "type": "array", "items": { "type": "string" } },
+          "reference_id": { "type": ["string", "null"] },
+          "metadata": { "type": ["object", "null"] },
+          "attempts": { "type": "integer", "description": "Capture attempts used (max 3)." },
+          "failure_code": { "type": ["string", "null"], "description": "e.g. ATTEMPTS_EXHAUSTED on failed sessions." },
+          "sdk": {
+            "type": "object",
+            "properties": {
+              "platform": { "type": ["string", "null"] },
+              "version": { "type": ["string", "null"] }
+            }
+          },
+          "created_at": { "type": "string", "format": "date-time" },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "captured_at": { "type": ["string", "null"], "format": "date-time" },
+          "completed_at": { "type": ["string", "null"], "format": "date-time" }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "BAD_REQUEST · INVALID_THRESHOLD · NONCE_MISMATCH",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "BAD_REQUEST", "message": "Provide 'data' (base64) or 'image_url'" } } } }
+      },
+      "Unauthorized": {
+        "description": "UNAUTHORIZED — missing, invalid, or revoked API key",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "UNAUTHORIZED", "message": "Missing, invalid, or revoked API key" } } } }
+      },
+      "InvalidSessionToken": {
+        "description": "INVALID_SESSION_TOKEN — sst_ token missing, wrong, or no longer valid",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "INVALID_SESSION_TOKEN", "message": "Invalid or expired session token" } } } }
+      },
+      "InsufficientCredits": {
+        "description": "INSUFFICIENT_CREDITS — top up in the console",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "INSUFFICIENT_CREDITS", "message": "Insufficient credits" } } } }
+      },
+      "ImageTooLarge": {
+        "description": "IMAGE_TOO_LARGE — over 10 MB",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "IMAGE_TOO_LARGE", "message": "Image too large (max 10 MB)" } } } }
+      },
+      "Unprocessable": {
+        "description": "INVALID_IMAGE · FACE_NOT_DETECTED · FACE_TOO_SMALL · IMAGE_BACKLIT — user-fixable, never charged",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "FACE_NOT_DETECTED", "message": "No face found in the image" } } } }
+      },
+      "SessionNotFound": {
+        "description": "SESSION_NOT_FOUND — no such session for your organization",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "SESSION_NOT_FOUND", "message": "No such verification session" } } } }
+      },
+      "SessionNotPending": {
+        "description": "SESSION_NOT_PENDING — already completed or failed",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "SESSION_NOT_PENDING", "message": "Verification session already completed or failed" } } } }
+      },
+      "SessionExpired": {
+        "description": "SESSION_EXPIRED — TTL elapsed; create a new session",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "SESSION_EXPIRED", "message": "Verification session expired" } } } }
+      },
+      "TooManyAttempts": {
+        "description": "TOO_MANY_ATTEMPTS — 3 capture attempts used; create a new session",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "TOO_MANY_ATTEMPTS", "message": "Verification session attempt limit reached" } } } }
+      },
+      "MediaNotAvailable": {
+        "description": "MEDIA_NOT_AVAILABLE — storage off, retention passed, or erased",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "MEDIA_NOT_AVAILABLE", "message": "No stored capture for this verification session" } } } }
+      },
+      "Upstream": {
+        "description": "UPSTREAM_ERROR — inference service unavailable; retry with backoff",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "UPSTREAM_ERROR", "message": "Inference service unavailable" } } } }
+      }
+    }
+  }
+}

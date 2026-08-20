@@ -1,0 +1,73 @@
+---
+title: "Hosted verify page"
+description: "Zero frontend code — redirect or embed our capture page"
+---
+
+The hosted page at `https://app.spoofsense.ai/verify` runs the same capture flow as the Web SDK, served from our origin. You create the session on your backend, then either redirect the user to the page or embed it in an iframe.
+
+<Note>
+The client token always travels in the **URL fragment** (`#token=…`), never a query parameter — fragments don't reach servers, so the token never lands in access logs.
+</Note>
+
+## Redirect mode
+
+```javascript
+// After creating the session on your backend, send the user to the hosted page.
+const verifyUrl =
+  "https://app.spoofsense.ai/verify" +
+  `#token=${session.client_token}` +
+  `&return_url=${encodeURIComponent("https://yourapp.com/kyc/continue")}`;
+res.redirect(verifyUrl);
+```
+
+When the user finishes, they return to your `return_url` with:
+
+```text
+?spoofsense_status=complete&spoofsense_session_id=vs_…
+```
+
+(`spoofsense_status` can also be `cancelled` or `error`.) The query string is a **hint, not proof** — always read the decision server-side with your secret key.
+
+## Embed (iframe) mode
+
+```html
+<!-- allow="camera" is required, or the browser blocks capture inside the frame -->
+<iframe
+  id="spoofsense-verify"
+  allow="camera"
+  style="width: 100%; max-width: 420px; aspect-ratio: 3 / 4; border: 0"
+></iframe>
+
+<script>
+  // clientToken comes from YOUR backend. Never mint it in the browser.
+  document.getElementById("spoofsense-verify").src =
+    "https://app.spoofsense.ai/verify" +
+    "#token=" + clientToken +
+    "&origin=" + encodeURIComponent(location.origin);
+
+  window.addEventListener("message", (e) => {
+    if (e.origin !== "https://app.spoofsense.ai") return; // only trust the hosted page
+    if (e.data && e.data.type === "spoofsense:complete") {
+      notifyBackend(e.data.verificationSessionId); // backend reads the decision
+      // e.data.capturedFrame is the submitted JPEG (Blob), for a local preview.
+      preview.src = URL.createObjectURL(e.data.capturedFrame);
+    }
+    // also emitted: { type: "spoofsense:cancel" } and
+    //               { type: "spoofsense:error", code, message }
+  });
+</script>
+```
+
+### Messages posted to your page
+
+| Message | Payload |
+|---|---|
+| `spoofsense:complete` | `verificationSessionId`, `capturedFrame` (Blob), `capturedFrameSha256`, `width`, `height` |
+| `spoofsense:cancel` | — |
+| `spoofsense:error` | `code`, `message` ([standard error codes](/guides/errors)) |
+
+The captured frame rides the message only because `&origin=` named your page as the target. Redirect mode can't carry the image — your backend retrieves it from the [media endpoint](/verification-sessions/results#retrieving-the-captured-selfie) instead.
+
+<Warning>
+Always verify `e.origin` before trusting a message, and treat completion as a hint: the decision only counts when your backend reads `status: "complete"` and `decision: "real"` with the secret key.
+</Warning>

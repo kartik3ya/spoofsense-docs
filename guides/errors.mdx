@@ -1,0 +1,53 @@
+---
+title: "Errors"
+description: "Every error code, and what to do about it"
+---
+
+All errors use one envelope:
+
+```json
+{
+  "error": {
+    "code": "FACE_NOT_DETECTED",
+    "message": "No face found in the image"
+  }
+}
+```
+
+Branch on `error.code`, not the message — messages may be reworded.
+
+## Detection endpoints
+
+| Status | Code | Meaning | What to do |
+|---|---|---|---|
+| 400 | `BAD_REQUEST` | Malformed body, missing image field, or unfetchable `image_url` | Fix the request |
+| 400 | `INVALID_THRESHOLD` | `threshold` outside `[0, 1]` or not a number | Fix the value |
+| 401 | `UNAUTHORIZED` | Missing, invalid, or revoked API key | Check the key; create a new one if revoked |
+| 402 | `INSUFFICIENT_CREDITS` | Balance is empty | Top up in the console — operator issue, not a user issue |
+| 413 | `IMAGE_TOO_LARGE` | Payload over 10 MB | Send the original capture, not a scan/export |
+| 422 | `INVALID_IMAGE` | Bytes aren't a decodable image | Check encoding — common with double-base64 |
+| 422 | `FACE_NOT_DETECTED` | No face found | Have the user retake |
+| 422 | `FACE_TOO_SMALL` | Face too small to analyze | Retake closer to the camera |
+| 422 | `IMAGE_BACKLIT` | Strong backlight makes liveness unreliable | Retake with light on the face, not behind it |
+| 500 | `INTERNAL` | Unexpected server error | Retry; contact us if it persists |
+| 502 | `UPSTREAM_ERROR` | Inference service unavailable | Retry with backoff |
+
+<Note>
+No 4xx error is ever charged. `422` codes are **user-fixable** — build your retake UX around them.
+</Note>
+
+## Verification session endpoints
+
+| Status | Code | Meaning | What to do |
+|---|---|---|---|
+| 400 | `NONCE_MISMATCH` | `client_payload.nonce` doesn't match the session | Fetch the nonce from `session_info` first; consumes an attempt |
+| 401 | `INVALID_SESSION_TOKEN` | `sst_` token missing, wrong, or already invalid | Mint a fresh session from your backend |
+| 404 | `SESSION_NOT_FOUND` | No such session id for your organization | Check the id |
+| 404 | `MEDIA_NOT_AVAILABLE` | No stored capture (storage off, retention passed, or erased) | See the message; check `media.reason` on the session read |
+| 409 | `SESSION_NOT_PENDING` | Session already completed or failed | Create a new session |
+| 410 | `SESSION_EXPIRED` | TTL elapsed before completion | Create a new session |
+| 429 | `TOO_MANY_ATTEMPTS` | All capture attempts used (3 by default) | Create a new session |
+
+### Which submit errors consume an attempt
+
+A session allows **3 capture attempts**. Errors caused by the capture itself — `413`, any `422`, and `NONCE_MISMATCH` — consume the attempt. Errors that aren't the capture's fault — bad form encoding, `INSUFFICIENT_CREDITS`, `UPSTREAM_ERROR` — refund it, so server-side trouble never burns the user's retry budget. When the last attempt is consumed by a failure, the session becomes `failed` with `failure_code: "ATTEMPTS_EXHAUSTED"`.

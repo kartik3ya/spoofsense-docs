@@ -1,0 +1,30 @@
+---
+title: "Credits & billing"
+description: "What a call costs and how balances behave"
+---
+
+SpoofSense is prepaid: you buy credits in the console, and each successful check decrements your balance.
+
+## Costs
+
+| Check | Credits |
+|---|---|
+| Face liveness (`/v1/liveness_detection`) | 1 |
+| Deepfake (`/v1/deepfake_detection`) | 2 |
+| Unified (`/v1/unified_detection`) | 3 |
+| Verification session — liveness only | 1 |
+| Verification session — deepfake only | 2 |
+| Verification session — both (default) | 3 |
+
+New organizations start with free trial credits, so you can integrate before paying.
+
+## Rules
+
+- **You're only charged for scored checks.** Input errors — invalid image, no face detected, image too large, bad threshold, backlit capture — return 4xx and cost nothing.
+- **Every response tells you where you stand** via `credits_remaining`.
+- **Zero balance disables your keys.** Calls return `402 INSUFFICIENT_CREDITS` until you top up in the console. Creating a verification session also pre-checks the balance, so you'll never hand your client a token that's doomed to fail.
+- **Verification session retries are free** until a check actually runs: a `422` retake (blur, no face) doesn't charge; the charge lands when the capture is scored.
+
+<Note>
+Surface `402 INSUFFICIENT_CREDITS` to your **operations team**, not your end user — it means the account needs a top-up, not that verification failed.
+</Note>

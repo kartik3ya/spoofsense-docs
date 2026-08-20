@@ -1,0 +1,94 @@
+---
+title: "Web SDK"
+description: "Camera capture for browsers — React, vanilla JS, or a script tag"
+---
+
+The Web SDK renders the camera view, guides the user, captures a frame from the **live stream** (never a file upload), and submits it with anti-injection signals. Your page gets a callback with the session id — the decision stays server-side.
+
+Requires a browser with camera access over HTTPS. You need a `clientToken` (`sst_…`) minted by [your backend](/verification-sessions/overview) first.
+
+<Tabs>
+  <Tab title="React">
+    ```bash
+    npm install @spoofsense/react
+    ```
+
+    ```tsx
+    import { SpoofSenseCapture } from "@spoofsense/react";
+
+    function VerifyStep({ clientToken }: { clientToken: string }) {
+      return (
+        <SpoofSenseCapture
+          sessionToken={clientToken}
+          onComplete={({ verificationSessionId, capturedFrame }) => {
+            // capturedFrame is the submitted JPEG (Blob) — fine for a local
+            // preview or your own upload. For the authoritative copy, your
+            // backend fetches the session media.
+            setPreview(URL.createObjectURL(capturedFrame));
+            // Tell your backend to fetch the result for this session.
+            notifyBackend(verificationSessionId);
+          }}
+          onError={(e) => console.warn(e.code, e.message)}
+        />
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="Vanilla JS">
+    ```bash
+    npm install @spoofsense/web-sdk
+    ```
+
+    ```javascript
+    import * as SpoofSense from "@spoofsense/web-sdk";
+
+    const handle = SpoofSense.mount({
+      sessionToken: clientToken,   // the sst_… token from your backend
+      container: "#verify",        // element or selector
+      onComplete: ({ verificationSessionId, capturedFrame, capturedFrameSha256 }) => {
+        showPreview(URL.createObjectURL(capturedFrame)); // the submitted JPEG
+        notifyBackend(verificationSessionId);
+      },
+      onError: (e) => console.warn(e.code, e.message),
+    });
+    // handle.unmount() when done
+    ```
+  </Tab>
+  <Tab title="CDN script tag">
+    ```html
+    <div id="verify"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@spoofsense/web-sdk/dist/spoofsense.min.js"></script>
+    <script>
+      SpoofSense.mount({
+        sessionToken: CLIENT_TOKEN, // the sst_… token from your backend
+        container: "#verify",
+        onComplete: function (r) {
+          showPreview(URL.createObjectURL(r.capturedFrame));
+          notifyBackend(r.verificationSessionId);
+        },
+        onError: function (e) { console.warn(e.code, e.message); },
+      });
+    </script>
+    ```
+  </Tab>
+</Tabs>
+
+## The completion callback
+
+| Field | Description |
+|---|---|
+| `verificationSessionId` | The `vs_…` id — send this to your backend so it can [read the result](/verification-sessions/results) |
+| `capturedFrame` | The exact JPEG that was submitted, as a `Blob` — for a local preview or your own storage |
+| `capturedFrameSha256` | Hash of those bytes; matches `media.sha256` on the server-side read |
+
+`onError` receives `{ code, message }` using the [standard error codes](/guides/errors) — e.g. `SESSION_EXPIRED` means mint a fresh session, retryable `422`s are handled inside the SDK's retake flow.
+
+## Behavior notes
+
+- The SDK calls `GET /v1/verification_sessions/session_info` at mount to validate the token and fetch the session nonce **before** opening the camera — an expired or used session fails fast with no camera prompt.
+- Retakes for user-fixable problems (no face, blur, backlight) are built in, up to the session's 3-attempt limit.
+- The SDK never exposes scores or decisions to the page. Always verify server-side.
+
+<Note>
+Prefer zero frontend code? Use the [hosted page](/verification-sessions/hosted) — same capture flow, served from our origin.
+</Note>

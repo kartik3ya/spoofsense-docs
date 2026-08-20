@@ -1,0 +1,67 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "SpoofSense",
+  "description": "Face liveness and deepfake detection API",
+  "colors": {
+    "primary": "#16A34A",
+    "light": "#4ADE80",
+    "dark": "#15803D"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": ["index", "quickstart"]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/authentication",
+              "guides/image-inputs",
+              "guides/thresholds",
+              "guides/credits",
+              "guides/errors"
+            ]
+          },
+          {
+            "group": "Verification sessions",
+            "pages": [
+              "verification-sessions/overview",
+              "verification-sessions/web",
+              "verification-sessions/android",
+              "verification-sessions/hosted",
+              "verification-sessions/results"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "openapi": "api-reference/openapi.json"
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Console",
+        "href": "https://app.spoofsense.ai/dashboard"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get an API key",
+      "href": "https://app.spoofsense.ai"
+    }
+  },
+  "footer": {
+    "socials": {
+      "website": "https://spoofsense.ai"
+    }
+  }
+}

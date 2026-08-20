@@ -1,0 +1,68 @@
+---
+title: "Image inputs"
+description: "Every way to send an image to the detection endpoints"
+---
+
+The three detection endpoints (`/v1/liveness_detection`, `/v1/deepfake_detection`, `/v1/unified_detection`) accept the same image in four interchangeable forms. Pick whichever fits your stack.
+
+## Formats
+
+<Tabs>
+  <Tab title="Multipart file">
+    ```bash
+    curl -X POST https://api.spoofsense.ai/v1/liveness_detection \
+      -H "Authorization: Bearer $SPOOFSENSE_API_KEY" \
+      -F "file=@selfie.jpg" \
+      -F "threshold=0.6"        # optional
+    ```
+    The field name `file` is canonical; `image` is accepted as an alias.
+  </Tab>
+  <Tab title="Base64 JSON">
+    ```bash
+    curl -X POST https://api.spoofsense.ai/v1/liveness_detection \
+      -H "Authorization: Bearer $SPOOFSENSE_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"data": "'"$(base64 -i selfie.jpg)"'"}'
+    ```
+    `data` accepts plain base64 **or** a full data URL (`data:image/jpeg;base64,…`). `image` is accepted as an alias for `data`.
+  </Tab>
+  <Tab title="Image URL">
+    ```bash
+    curl -X POST https://api.spoofsense.ai/v1/liveness_detection \
+      -H "Authorization: Bearer $SPOOFSENSE_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"image_url": "https://example.com/selfie.jpg"}'
+    ```
+    We fetch the URL server-side (http/https only, 10-second timeout). `url` is accepted as an alias.
+  </Tab>
+  <Tab title="Raw bytes">
+    ```bash
+    curl -X POST https://api.spoofsense.ai/v1/liveness_detection \
+      -H "Authorization: Bearer $SPOOFSENSE_API_KEY" \
+      -H "Content-Type: image/jpeg" \
+      --data-binary @selfie.jpg
+    ```
+    Any request body that isn't JSON or multipart is treated as raw image bytes.
+  </Tab>
+</Tabs>
+
+## Requirements and behavior
+
+- **Formats:** JPEG, PNG, WebP, GIF, BMP — anything a standard image decoder reads. Undecodable input returns `422 INVALID_IMAGE`.
+- **Size limit:** 10 MB, enforced on the decoded payload and on URL downloads alike (`413 IMAGE_TOO_LARGE`).
+- **Orientation:** EXIF rotation is applied automatically before detection.
+- **One clear face:** the image must contain a detectable face, large enough to analyze (`422 FACE_NOT_DETECTED` / `FACE_TOO_SMALL`).
+- **Lighting:** heavily backlit captures are rejected with `422 IMAGE_BACKLIT` rather than scored unreliably — prompt the user to retake with light on the face.
+
+<Note>
+**Don't downscale or re-encode before sending.** Resolution is load-bearing for deepfake detection — send the original capture. Failed input validation (any 4xx) is never charged.
+</Note>
+
+## Threshold overrides
+
+All input forms accept an optional per-request threshold (JSON body or multipart field):
+
+- Single endpoints: `threshold` — a number in `[0, 1]`.
+- Unified: `thresholds` — an object like `{"face_liveness": 0.6, "deepfake": 0.4}` (JSON body only). A plain `threshold` applies to both.
+
+Invalid values return `400 INVALID_THRESHOLD`. See [Thresholds & scores](/guides/thresholds) for when to override.

@@ -1,0 +1,120 @@
+---
+title: "Results & media"
+description: "Reading the decision and retrieving the captured selfie — server-side"
+---
+
+Both calls on this page require your **secret key**. The `sst_` client token can never reach them.
+
+## Reading the result
+
+When your client reports completion, fetch the session by id:
+
+<CodeGroup>
+```javascript Node.js
+const res = await fetch(`https://api.spoofsense.ai/v1/verification_sessions/${sessionId}`, {
+  headers: { Authorization: `Bearer ${process.env.SPOOFSENSE_API_KEY}` },
+});
+const result = await res.json();
+
+if (result.status === "complete" && result.decision === "real") {
+  // Genuine live capture: proceed.
+} else {
+  // "spoof", "failed", or "expired": reject or re-verify.
+}
+```
+
+```python Python
+res = requests.get(
+    f"https://api.spoofsense.ai/v1/verification_sessions/{session_id}",
+    headers={"Authorization": f"Bearer {os.environ['SPOOFSENSE_API_KEY']}"},
+)
+result = res.json()
+ok = result["status"] == "complete" and result["decision"] == "real"
+```
+
+```bash cURL
+curl https://api.spoofsense.ai/v1/verification_sessions/vs_… \
+  -H "Authorization: Bearer $SPOOFSENSE_API_KEY"
+```
+</CodeGroup>
+
+```json Response
+{
+  "object": "verification_session",
+  "id": "vs_…",
+  "status": "complete",
+  "decision": "real",
+  "checks": {
+    "face_liveness": { "decision": "real", "genuine_score": 0.94, "threshold": 0.5 },
+    "deepfake":      { "decision": "real", "genuine_score": 0.88, "threshold": 0.5 }
+  },
+  "risk": {
+    "attestation": "not_evaluated",
+    "injection_blocked": false,
+    "signals": { "duplicate_image": false }
+  },
+  "media": { "available": true, "sha256": "…", "content_type": "image/jpeg", "expires_at": "…" },
+  "products": ["face_liveness", "deepfake"],
+  "reference_id": "user_123",
+  "metadata": null,
+  "attempts": 1,
+  "failure_code": null,
+  "sdk": { "platform": "web", "version": "0.2.0" },
+  "created_at": "…", "expires_at": "…", "captured_at": "…", "completed_at": "…"
+}
+```
+
+**The verification rule:** the user is verified only when `status` is `"complete"` **and** `decision` is `"real"`. Everything else — `"spoof"`, `failed`, `expired`, or a value relayed by the client — is not verified.
+
+### The `risk` object
+
+- `signals.duplicate_image` — this exact capture was already submitted in another of your sessions; a soft signal worth reviewing.
+- `attestation` — status of device attestation (e.g. Play Integrity) when provided by the SDK.
+- **Injection-blocked sessions**: when a capture was rejected for suspected injection (e.g. a known virtual camera under the `enforce` policy), `decision` is `"spoof"`, `checks` is `null`, and `risk` is exactly `{ "injection_blocked": true, "reason": "suspected_injection" }`. Scores and signal details are deliberately withheld so a flagged session can't be used to probe the detectors.
+
+## Retrieving the captured selfie
+
+Liveness and deepfake checks say the face is real — not *whose* it is. If you match the capture against an ID document, keep KYC records, or run manual review, retrieve the exact image the models scored:
+
+<CodeGroup>
+```javascript Node.js
+const media = await fetch(
+  `https://api.spoofsense.ai/v1/verification_sessions/${sessionId}/media`,
+  { headers: { Authorization: `Bearer ${process.env.SPOOFSENSE_API_KEY}` } },
+).then((r) => r.json());
+// media.url is a signed link valid for 5 minutes — fetch the bytes now.
+```
+
+```python Python
+media = requests.get(
+    f"https://api.spoofsense.ai/v1/verification_sessions/{session_id}/media",
+    headers={"Authorization": f"Bearer {os.environ['SPOOFSENSE_API_KEY']}"},
+).json()
+selfie = requests.get(media["url"]).content  # signed link, valid 5 minutes
+```
+
+```bash cURL
+# ?redirect=true 302s straight to the image bytes
+curl -L -o selfie.jpg \
+  "https://api.spoofsense.ai/v1/verification_sessions/vs_…/media?redirect=true" \
+  -H "Authorization: Bearer $SPOOFSENSE_API_KEY"
+```
+</CodeGroup>
+
+- The image is available **as soon as the decision is** — it uploads during capture, so there's nothing to poll.
+- `url` is a signed link valid for **5 minutes**. Fetch the bytes immediately; don't store the link.
+- Verify your download against `sha256` — it hashes the exact bytes the models scored, and matches the SDK's `capturedFrameSha256`.
+- Every retrieval is written to your organization's media access log, keeping biometric access auditable.
+
+### When media isn't available
+
+`GET …/media` returns `404 MEDIA_NOT_AVAILABLE`, and the session read's `media` block explains why:
+
+| `media.reason` | Meaning |
+|---|---|
+| `not_captured` | The session never completed a capture |
+| `storage_disabled` | Your org has media storage off (**Settings → Compliance**) |
+| `expired` | The capture passed its retention window |
+| `unavailable` | The image was erased or the upload failed |
+
+Media storage, retention windows, and erasure are controlled per organization in the console's compliance settings.

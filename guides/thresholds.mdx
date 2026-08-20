@@ -1,0 +1,52 @@
+---
+title: "Thresholds & scores"
+description: "How genuine_score and decision work, and when to tune the threshold"
+---
+
+Every check produces a `genuine_score` in `[0, 1]` — higher means more likely a genuine, live capture — and applies one rule:
+
+```text
+decision = genuine_score > threshold
+```
+
+## The score is calibrated
+
+Raw model probabilities shift when models are retrained. SpoofSense remaps every model's output so that **the decision boundary always sits at 0.5**: a threshold you tune today keeps meaning the same thing after a model update, and thresholds are comparable across products.
+
+Model internals (architecture, raw per-class probabilities) are deliberately not exposed.
+
+## Where the threshold comes from
+
+Highest priority wins:
+
+1. **Per-request override** — `threshold` (or `thresholds` on unified) in the request body.
+2. **Organization default** — set per product in the console (**Dashboard → Settings**).
+3. **Platform default** — `0.5`.
+
+The threshold actually applied is echoed back in every response, so your logs always show which rule made the call.
+
+## Tuning guidance
+
+| You want | Move the threshold | Trade-off |
+|---|---|---|
+| Catch more spoofs (stricter) | Up, e.g. `0.6` | More genuine users rejected (higher false-reject rate) |
+| Fewer false rejections (looser) | Down, e.g. `0.4` | More spoofs slip through |
+
+- Start at the default `0.5` and only move after measuring on your own traffic.
+- For [verification sessions](/verification-sessions/overview), thresholds are fixed **server-side at session creation** — the client can never loosen them.
+- On `/v1/unified_detection`, the overall `decision` is `"real"` only if **every** product's check passes its own threshold; the per-product outcomes are in `checks`.
+
+```json Unified response
+{
+  "product": "unified",
+  "decision": "spoof",
+  "checks": {
+    "face_liveness": { "decision": "real",  "genuine_score": 0.91, "threshold": 0.5 },
+    "deepfake":      { "decision": "spoof", "genuine_score": 0.31, "threshold": 0.5 }
+  },
+  "latency_ms": 420,
+  "credits_remaining": 997,
+  "session_id": { "face_liveness": "…", "deepfake": "…" },
+  "request_id": "…"
+}
+```

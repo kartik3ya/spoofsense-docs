@@ -1,0 +1,46 @@
+---
+title: "Authentication"
+description: "Secret keys and session tokens"
+---
+
+SpoofSense uses two kinds of credentials, for two trust levels.
+
+## Secret keys (`sk_live_…`)
+
+Created in the console under **Dashboard → API keys**. Sent on every server-side call, either as a bearer token or an `x-api-key` header:
+
+```bash
+# Preferred
+curl https://api.spoofsense.ai/v1/liveness_detection \
+  -H "Authorization: Bearer $SPOOFSENSE_API_KEY" ...
+
+# Equivalent
+curl https://api.spoofsense.ai/v1/liveness_detection \
+  -H "x-api-key: $SPOOFSENSE_API_KEY" ...
+```
+
+- The plaintext key is shown **once** at creation; only a SHA-256 hash and the last four characters are stored. Lost keys can't be recovered — revoke and create a new one.
+- A revoked or disabled key returns `401 UNAUTHORIZED`.
+- When your credit balance reaches zero, keys stop working until you top up ([Credits & billing](/guides/credits)).
+
+<Warning>
+Secret keys authorize spending your credits **and** retrieving stored biometric captures. Keep them in server-side environment variables only — never in client code, mobile builds, or version control.
+</Warning>
+
+## Session client tokens (`sst_…`)
+
+Short-lived, single-use tokens for the [verification session](/verification-sessions/overview) capture flow. Your backend mints one by creating a session with its secret key, then hands **only the token** to the browser or app:
+
+```text
+Authorization: Bearer sst_...
+```
+
+A session token can do exactly two things: read its own session's metadata (`GET /v1/verification_sessions/session_info`) and submit a capture (`POST /v1/verification_sessions/submit`). It can never read a decision, a score, or stored media — so a token leaked from a client is not a path to anything sensitive.
+
+| | `sk_live_…` secret key | `sst_…` session token |
+|---|---|---|
+| Lives in | Your server | Browser / mobile app |
+| Lifetime | Until revoked | Session TTL (default 15 min) |
+| Detection endpoints | ✅ | ❌ |
+| Create sessions, read results, fetch media | ✅ | ❌ |
+| Submit a capture | ❌ | ✅ |

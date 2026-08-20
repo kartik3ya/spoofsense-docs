@@ -1,0 +1,51 @@
+---
+title: "Android SDK"
+description: "Native capture with CameraX and Play Integrity signals"
+---
+
+The Android SDK opens a full-screen capture activity, captures from the front camera, and submits with device-integrity signals. Distributed via JitPack.
+
+You need a `clientToken` (`sst_…`) minted by [your backend](/verification-sessions/overview) — never embed your secret key in the app.
+
+## Install
+
+```kotlin
+// settings.gradle.kts
+dependencyResolutionManagement {
+    repositories { maven("https://jitpack.io") }
+}
+
+// build.gradle.kts
+implementation("com.github.kartik3ya:spoofsense-android-sdk:v0.1.0")
+```
+
+## Launch and handle the result
+
+```kotlin
+// In your Activity/Fragment
+val verify = registerForActivityResult(SpoofSenseVerification()) { result ->
+    when (result) {
+        is VerificationResult.Complete -> notifyBackend(result.verificationSessionId)
+        is VerificationResult.Failed -> Log.w("spoofsense", result.code)
+        VerificationResult.Canceled -> {}
+    }
+}
+
+verify.launch(SpoofSenseConfig(sessionToken = clientToken))
+```
+
+| Result | Meaning |
+|---|---|
+| `Complete` | Capture submitted. Send `verificationSessionId` to your backend, which [reads the decision](/verification-sessions/results) with the secret key |
+| `Failed` | Terminal failure — `code` is a [standard error code](/guides/errors) such as `SESSION_EXPIRED` or `TOO_MANY_ATTEMPTS`. Mint a new session to retry |
+| `Canceled` | The user backed out |
+
+## Behavior notes
+
+- Capture comes from the live camera (CameraX); there is no gallery or file input, by design.
+- The SDK validates the session and fetches its nonce before opening the camera, and handles retryable `422` retakes internally up to the 3-attempt limit.
+- Device integrity signals ride along with the submission and feed the [injection-protection policy](/verification-sessions/overview#injection-protection).
+
+<Warning>
+`Complete` means "a capture was submitted", not "the user is verified". Only your backend's session read with `status: "complete"` and `decision: "real"` means verified.
+</Warning>

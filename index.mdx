@@ -1,0 +1,53 @@
+---
+title: "Introduction"
+description: "Face liveness and deepfake detection, behind one API"
+---
+
+SpoofSense tells you whether a face in an image is a **real, live person** — not a printed photo, a screen replay, a mask, or an AI-generated deepfake. You send an image (or let our SDKs capture one), we return a decision.
+
+## Two products, three ways to call them
+
+<CardGroup cols={2}>
+  <Card title="Face Liveness Detection" icon="user-check">
+    Passive liveness from a single frame — catches presentation attacks such as printed photos, screen replays, and masks. No blink/turn challenges.
+  </Card>
+  <Card title="Deepfake Detection" icon="shield-halved">
+    Detects AI-generated and face-swapped imagery that can fool a liveness check.
+  </Card>
+</CardGroup>
+
+<CardGroup cols={3}>
+  <Card title="Detection API" icon="code" href="/quickstart">
+    You already have the image? `POST` it to `/v1/liveness_detection`, `/v1/deepfake_detection`, or `/v1/unified_detection` and get a decision back in one round trip.
+  </Card>
+  <Card title="Verification sessions + SDKs" icon="mobile-screen-button" href="/verification-sessions/overview">
+    Verifying a live user? Our Web and Android SDKs capture the selfie from the camera, protect against injection attacks, and keep scores away from the untrusted client.
+  </Card>
+  <Card title="Hosted verify page" icon="browser" href="/verification-sessions/hosted">
+    Zero frontend code: redirect the user to our hosted capture page, or embed it in an iframe.
+  </Card>
+</CardGroup>
+
+## How a decision works
+
+Every check returns a calibrated `genuine_score` between 0 and 1 and applies:
+
+```text
+decision = genuine_score > threshold      (default threshold: 0.5)
+```
+
+The score is calibrated so the decision boundary sits at 0.5 across model updates — a threshold you tune today keeps meaning the same thing after we retrain. See [Thresholds & scores](/guides/thresholds).
+
+## Base URL
+
+```text
+https://api.spoofsense.ai
+```
+
+All endpoints are served over HTTPS. Errors always use one envelope: `{"error": {"code", "message"}}` — see [Errors](/guides/errors).
+
+## Get started
+
+1. [Create an account](https://app.spoofsense.ai) — new organizations start with free trial credits.
+2. Create an API key in the console (**Dashboard → API keys**).
+3. Make your [first call in five minutes](/quickstart).
