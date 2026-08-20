@@ -51,7 +51,7 @@ The three detection endpoints (`/v1/liveness_detection`, `/v1/deepfake_detection
 - **Formats:** JPEG, PNG, WebP, GIF, BMP — anything a standard image decoder reads. Undecodable input returns `422 INVALID_IMAGE`.
 - **Size limit:** 10 MB, enforced on the decoded payload and on URL downloads alike (`413 IMAGE_TOO_LARGE`).
 - **Orientation:** EXIF rotation is applied automatically before detection.
-- **One clear face:** the image must contain a detectable face, large enough to analyze (`422 FACE_NOT_DETECTED` / `FACE_TOO_SMALL`).
+- **One clear face:** the image must contain a detectable face, and its bounding box must be at least **224×224 pixels** (`422 FACE_NOT_DETECTED` / `FACE_TOO_SMALL`). The error message reports the detected size, e.g. `Detected face 180x176 smaller than minimum 224x224`. In practice, any uncropped selfie from a modern phone camera clears this comfortably — it matters when faces are small in the frame or images were downscaled.
 - **Lighting:** heavily backlit captures are rejected with `422 IMAGE_BACKLIT` rather than scored unreliably — prompt the user to retake with light on the face.
 
 <Note>

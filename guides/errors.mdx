@@ -27,7 +27,7 @@ Branch on `error.code`, not the message — messages may be reworded.
 | 413 | `IMAGE_TOO_LARGE` | Payload over 10 MB | Send the original capture, not a scan/export |
 | 422 | `INVALID_IMAGE` | Bytes aren't a decodable image | Check encoding — common with double-base64 |
 | 422 | `FACE_NOT_DETECTED` | No face found | Have the user retake |
-| 422 | `FACE_TOO_SMALL` | Face too small to analyze | Retake closer to the camera |
+| 422 | `FACE_TOO_SMALL` | Face bounding box under 224×224 px | Retake closer to the camera; don't downscale before sending |
 | 422 | `IMAGE_BACKLIT` | Strong backlight makes liveness unreliable | Retake with light on the face, not behind it |
 | 500 | `INTERNAL` | Unexpected server error | Retry; contact us if it persists |
 | 502 | `UPSTREAM_ERROR` | Inference service unavailable | Retry with backoff |

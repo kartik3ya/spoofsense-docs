@@ -428,7 +428,7 @@
     "requestBodies": {
       "DetectionInput": {
         "required": true,
-        "description": "The image, in any supported form. Max 10 MB. EXIF orientation is applied automatically.",
+        "description": "The image, in any supported form. Max 10 MB. EXIF orientation is applied automatically. The detected face's bounding box must be at least 224×224 pixels, or the call returns 422 FACE_TOO_SMALL.",
         "content": {
           "application/json": {
             "schema": {
@@ -623,7 +623,7 @@
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "IMAGE_TOO_LARGE", "message": "Image too large (max 10 MB)" } } } }
       },
       "Unprocessable": {
-        "description": "INVALID_IMAGE · FACE_NOT_DETECTED · FACE_TOO_SMALL · IMAGE_BACKLIT — user-fixable, never charged",
+        "description": "INVALID_IMAGE · FACE_NOT_DETECTED · FACE_TOO_SMALL (face bounding box under 224×224 px) · IMAGE_BACKLIT — user-fixable, never charged",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "FACE_NOT_DETECTED", "message": "No face found in the image" } } } }
       },
       "SessionNotFound": {
