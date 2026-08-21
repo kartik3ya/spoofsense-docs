@@ -428,7 +428,7 @@
     "requestBodies": {
       "DetectionInput": {
         "required": true,
-        "description": "The image, in any supported form. Max 10 MB. EXIF orientation is applied automatically. The detected face's bounding box must be at least 224×224 pixels, or the call returns 422 FACE_TOO_SMALL.",
+        "description": "The image, in any supported form. Max 10 MB. EXIF orientation is applied automatically. The detected face's bounding box must be at least 224×224 pixels, or the call returns 422 FACE_TOO_SMALL — pass `min_face_check: false` to skip that gate.",
         "content": {
           "application/json": {
             "schema": {
@@ -453,6 +453,11 @@
                   "type": "object",
                   "description": "Unified only: per-product thresholds, e.g. {\"face_liveness\": 0.6, \"deepfake\": 0.4}.",
                   "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+                },
+                "min_face_check": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Set to false to disable the 224×224 minimum-face-size gate (422 FACE_TOO_SMALL) for this request. Small faces are upscaled before scoring, so accuracy degrades on faces well under 224 px — use only if your capture flow can't guarantee close-up faces. A face must still be detectable."
                 }
               }
             },
@@ -464,7 +469,8 @@
               "required": ["file"],
               "properties": {
                 "file": { "type": "string", "format": "binary", "description": "The image file. Alias field name: `image`." },
-                "threshold": { "type": "number", "minimum": 0, "maximum": 1 }
+                "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+                "min_face_check": { "type": "boolean", "default": true, "description": "\"false\" disables the 224×224 minimum-face-size gate for this request." }
               }
             }
           },

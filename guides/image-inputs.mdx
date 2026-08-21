@@ -51,7 +51,7 @@ The three detection endpoints (`/v1/liveness_detection`, `/v1/deepfake_detection
 - **Formats:** JPEG, PNG, WebP, GIF, BMP — anything a standard image decoder reads. Undecodable input returns `422 INVALID_IMAGE`.
 - **Size limit:** 10 MB, enforced on the decoded payload and on URL downloads alike (`413 IMAGE_TOO_LARGE`).
 - **Orientation:** EXIF rotation is applied automatically before detection.
-- **One clear face:** the image must contain a detectable face, and its bounding box must be at least **224×224 pixels** (`422 FACE_NOT_DETECTED` / `FACE_TOO_SMALL`). The error message reports the detected size, e.g. `Detected face 180x176 smaller than minimum 224x224`. In practice, any uncropped selfie from a modern phone camera clears this comfortably — it matters when faces are small in the frame or images were downscaled.
+- **One clear face:** the image must contain a detectable face, and its bounding box must be at least **224×224 pixels** (`422 FACE_NOT_DETECTED` / `FACE_TOO_SMALL`). The error message reports the detected size, e.g. `Detected face 180x176 smaller than minimum 224x224`. In practice, any uncropped selfie from a modern phone camera clears this comfortably — it matters when faces are small in the frame or images were downscaled. If your capture flow can't guarantee close-up faces, you can [turn this gate off per request](#disabling-the-minimum-face-size-gate).
 - **Lighting:** heavily backlit captures are rejected with `422 IMAGE_BACKLIT` rather than scored unreliably — prompt the user to retake with light on the face.
 
 <Note>
@@ -66,3 +66,18 @@ All input forms accept an optional per-request threshold (JSON body or multipart
 - Unified: `thresholds` — an object like `{"face_liveness": 0.6, "deepfake": 0.4}` (JSON body only). A plain `threshold` applies to both.
 
 Invalid values return `400 INVALID_THRESHOLD`. See [Thresholds & scores](/guides/thresholds) for when to override.
+
+## Disabling the minimum face size gate
+
+If your images legitimately contain smaller faces — CCTV frames, wide-angle kiosks, archived photos — pass `min_face_check: false` (JSON body or multipart field) to skip the 224×224 gate and score the image anyway:
+
+```json
+{ "data": "<base64>", "min_face_check": false }
+```
+
+Two things to know before you turn it off:
+
+- **Accuracy degrades with face size.** The models were trained on faces of at least 224 px; smaller faces are upscaled before scoring, and the further below 224 px they are, the less reliable `genuine_score` becomes. Prefer fixing the capture when you can.
+- **A face must still be detectable** — `FACE_NOT_DETECTED` is unaffected by this flag.
+
+The flag applies to the single-product and unified endpoints. Verification sessions (SDK flow) always keep the gate on: the capture UI controls framing, so small faces there indicate a capture problem, not a use case.
