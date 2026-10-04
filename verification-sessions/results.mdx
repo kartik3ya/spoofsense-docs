@@ -46,7 +46,12 @@ curl https://api.spoofsense.ai/v1/verification_sessions/vs_… \
   "decision": "real",
   "checks": {
     "face_liveness": { "decision": "real", "genuine_score": 0.94, "threshold": 0.5 },
-    "deepfake":      { "decision": "real", "genuine_score": 0.88, "threshold": 0.5 }
+    "deepfake":      { "decision": "real", "genuine_score": 0.88, "threshold": 0.5,
+                       "signals": {
+                         "ai_generated":      { "decision": "real", "genuine_score": 0.97 },
+                         "face_manipulation": { "decision": "real", "genuine_score": 0.88,
+                                                "status": "checked", "face_box": [212, 160, 290, 290] }
+                       } }
   },
   "risk": {
     "attestation": "not_evaluated",

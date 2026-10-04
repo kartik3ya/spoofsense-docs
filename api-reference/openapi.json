@@ -54,7 +54,7 @@
         "tags": ["Detection"],
         "summary": "Deepfake check",
         "operationId": "deepfakeDetection",
-        "description": "Checks whether the face in the image is AI-generated or face-swapped. Costs 2 credits. Send the original capture — do not downscale or re-encode; resolution is load-bearing for this model.",
+        "description": "Checks whether an image is AI-generated, and whether the face in it has been manipulated (face swap, AI edit, lip-sync, reenactment). Both detectors run on every call and are reported in `signals`; the decision is \"real\" only if neither flags the image. A face is not required: with no usable face (none found, or under 64 px) only the AI-image check runs. Costs 2 credits. Send the original file — resizing, re-compressing or rotating it first removes some of what the AI-image check reads.",
         "requestBody": { "$ref": "#/components/requestBodies/DetectionInput" },
         "responses": {
           "200": {
@@ -65,13 +65,17 @@
                 "example": {
                   "product": "deepfake",
                   "decision": "spoof",
-                  "genuine_score": 0.31,
+                  "genuine_score": 0.141725,
                   "threshold": 0.5,
                   "spoof_type": null,
-                  "latency_ms": 240,
+                  "latency_ms": 640,
                   "credits_remaining": 1238,
                   "session_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
-                  "request_id": "0f1e2d3c4b5a69788766554433221100"
+                  "request_id": "0f1e2d3c4b5a69788766554433221100",
+                  "signals": {
+                    "ai_generated": { "decision": "real", "genuine_score": 0.936734 },
+                    "face_manipulation": { "decision": "spoof", "genuine_score": 0.141725, "status": "checked", "face_box": [71, 100, 136, 136] }
+                  }
                 }
               }
             }
@@ -80,7 +84,7 @@
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "402": { "$ref": "#/components/responses/InsufficientCredits" },
           "413": { "$ref": "#/components/responses/ImageTooLarge" },
-          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "422": { "$ref": "#/components/responses/InvalidImage" },
           "502": { "$ref": "#/components/responses/Upstream" }
         }
       }
@@ -498,8 +502,39 @@
         "properties": {
           "decision": { "type": "string", "enum": ["real", "spoof"] },
           "genuine_score": { "type": "number", "description": "Calibrated score in [0,1]; the decision boundary sits at 0.5 across model updates." },
-          "threshold": { "type": "number", "description": "The threshold actually applied." }
+          "threshold": { "type": "number", "description": "The threshold actually applied." },
+          "signals": { "allOf": [{ "$ref": "#/components/schemas/DeepfakeSignals" }], "description": "On checks.deepfake only." }
         }
+      },
+      "DeepfakeSignal": {
+        "type": "object",
+        "properties": {
+          "decision": { "type": ["string", "null"], "enum": ["real", "spoof", null], "description": "This signal at the applied threshold. null when the signal didn't run." },
+          "genuine_score": { "type": ["number", "null"], "description": "Calibrated like the top-level genuine_score (0.5 boundary). null when the signal didn't run." }
+        },
+        "required": ["decision", "genuine_score"]
+      },
+      "DeepfakeSignals": {
+        "type": "object",
+        "description": "What each deepfake detector found. The image is \"real\" only if every signal that ran is real; the top-level genuine_score is the lowest signal score, and one threshold applies to all of them.",
+        "properties": {
+          "ai_generated": { "allOf": [{ "$ref": "#/components/schemas/DeepfakeSignal" }], "description": "Whole-image check for AI-generated or AI-edited content. Runs on every image, with or without a face." },
+          "face_manipulation": {
+            "description": "Face swaps, AI face edits, lip-sync and reenactment, judged on the largest face.",
+            "allOf": [
+              { "$ref": "#/components/schemas/DeepfakeSignal" },
+              {
+                "type": "object",
+                "properties": {
+                  "status": { "type": "string", "enum": ["checked", "no_face", "face_too_small"], "description": "Whether the face check ran. face_too_small = the largest face is under 64 px." },
+                  "face_box": { "type": "array", "items": { "type": "integer" }, "minItems": 4, "maxItems": 4, "description": "[x, y, w, h] of the judged face, in pixels of the image as sent (no EXIF rotation). Absent when no face was found." }
+                },
+                "required": ["status"]
+              }
+            ]
+          }
+        },
+        "required": ["ai_generated", "face_manipulation"]
       },
       "DetectionResponse": {
         "type": "object",
@@ -512,7 +547,8 @@
           "latency_ms": { "type": "integer", "description": "Model inference time." },
           "credits_remaining": { "type": "integer", "description": "Balance after this call." },
           "session_id": { "type": "string", "description": "Id of the logged detection session (visible in the console)." },
-          "request_id": { "type": "string", "description": "Quote this when contacting support." }
+          "request_id": { "type": "string", "description": "Quote this when contacting support." },
+          "signals": { "allOf": [{ "$ref": "#/components/schemas/DeepfakeSignals" }], "description": "Deepfake only: what each of the two detectors found." }
         }
       },
       "UnifiedResponse": {
@@ -629,8 +665,12 @@
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "IMAGE_TOO_LARGE", "message": "Image too large (max 10 MB)" } } } }
       },
       "Unprocessable": {
-        "description": "INVALID_IMAGE · FACE_NOT_DETECTED · FACE_TOO_SMALL (face bounding box under 224×224 px) · IMAGE_BACKLIT — user-fixable, never charged",
+        "description": "INVALID_IMAGE · FACE_NOT_DETECTED · FACE_TOO_SMALL (face bounding box under 224×224 px) · IMAGE_BACKLIT — user-fixable, never charged. The face errors come from liveness.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "FACE_NOT_DETECTED", "message": "No face found in the image" } } } }
+      },
+      "InvalidImage": {
+        "description": "INVALID_IMAGE — the file couldn't be decoded (HEIC isn't supported). Never charged. Deepfake has no face requirement, so it never returns FACE_NOT_DETECTED or FACE_TOO_SMALL.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "INVALID_IMAGE", "message": "Invalid or unsupported image" } } } }
       },
       "SessionNotFound": {
         "description": "SESSION_NOT_FOUND — no such session for your organization",

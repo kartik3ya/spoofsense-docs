@@ -25,15 +25,15 @@ Branch on `error.code`, not the message — messages may be reworded.
 | 401 | `UNAUTHORIZED` | Missing, invalid, or revoked API key | Check the key; create a new one if revoked |
 | 402 | `INSUFFICIENT_CREDITS` | Balance is empty | Top up in the console — operator issue, not a user issue |
 | 413 | `IMAGE_TOO_LARGE` | Payload over 10 MB | Send the original capture, not a scan/export |
-| 422 | `INVALID_IMAGE` | Bytes aren't a decodable image | Check encoding — common with double-base64 |
-| 422 | `FACE_NOT_DETECTED` | No face found | Have the user retake |
-| 422 | `FACE_TOO_SMALL` | Face bounding box under 224×224 px | Retake closer to the camera; don't downscale before sending. Or [disable the gate](/guides/image-inputs#disabling-the-minimum-face-size-gate) with `min_face_check: false` |
+| 422 | `INVALID_IMAGE` | Bytes aren't a decodable image (or HEIC) | Check encoding — common with double-base64 |
+| 422 | `FACE_NOT_DETECTED` | No face found (liveness and unified only) | Have the user retake |
+| 422 | `FACE_TOO_SMALL` | Face bounding box under 224×224 px (liveness and unified only) | Retake closer to the camera; don't downscale before sending. Or [disable the gate](/guides/image-inputs#disabling-the-minimum-face-size-gate) with `min_face_check: false` |
 | 422 | `IMAGE_BACKLIT` | Strong backlight makes liveness unreliable | Retake with light on the face, not behind it |
 | 500 | `INTERNAL` | Unexpected server error | Retry; contact us if it persists |
 | 502 | `UPSTREAM_ERROR` | Inference service unavailable | Retry with backoff |
 
 <Note>
-No 4xx error is ever charged. `422` codes are **user-fixable** — build your retake UX around them.
+No 4xx error is ever charged. `422` codes are **user-fixable** — build your retake UX around them. `/v1/deepfake_detection` never returns the face errors: an image without a usable face is still scored, and `signals.face_manipulation.status` says why the face check was skipped.
 </Note>
 
 ## Verification session endpoints

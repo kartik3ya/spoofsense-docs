@@ -23,6 +23,7 @@
             "pages": [
               "guides/authentication",
               "guides/image-inputs",
+              "guides/deepfake-signals",
               "guides/thresholds",
               "guides/credits",
               "guides/errors"

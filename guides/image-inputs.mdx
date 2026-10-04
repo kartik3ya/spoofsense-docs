@@ -48,14 +48,15 @@ The three detection endpoints (`/v1/liveness_detection`, `/v1/deepfake_detection
 
 ## Requirements and behavior
 
-- **Formats:** JPEG, PNG, WebP, GIF, BMP — anything a standard image decoder reads. Undecodable input returns `422 INVALID_IMAGE`.
+- **Formats:** JPEG, PNG, WebP, GIF, BMP — anything a standard image decoder reads. HEIC isn't supported, so convert iPhone photos to JPEG or PNG. Undecodable input returns `422 INVALID_IMAGE`.
 - **Size limit:** 10 MB, enforced on the decoded payload and on URL downloads alike (`413 IMAGE_TOO_LARGE`).
-- **Orientation:** EXIF rotation is applied automatically before detection.
-- **One clear face:** the image must contain a detectable face, and its bounding box must be at least **224×224 pixels** (`422 FACE_NOT_DETECTED` / `FACE_TOO_SMALL`). The error message reports the detected size, e.g. `Detected face 180x176 smaller than minimum 224x224`. In practice, any uncropped selfie from a modern phone camera clears this comfortably — it matters when faces are small in the frame or images were downscaled. If your capture flow can't guarantee close-up faces, you can [turn this gate off per request](#disabling-the-minimum-face-size-gate).
+- **Orientation:** liveness applies EXIF rotation automatically. Deepfake detection scores the file exactly as sent, so `face_box` coordinates refer to the unrotated pixels.
+- **One clear face (liveness and unified):** the image must contain a detectable face, and its bounding box must be at least **224×224 pixels** (`422 FACE_NOT_DETECTED` / `FACE_TOO_SMALL`). The error message reports the detected size, e.g. `Detected face 180x176 smaller than minimum 224x224`. In practice, any uncropped selfie from a modern phone camera clears this comfortably — it matters when faces are small in the frame or images were downscaled. If your capture flow can't guarantee close-up faces, you can [turn this gate off per request](#disabling-the-minimum-face-size-gate).
 - **Lighting:** heavily backlit captures are rejected with `422 IMAGE_BACKLIT` rather than scored unreliably — prompt the user to retake with light on the face.
+- **Deepfake detection takes any image.** It has no face requirement: a photo without a usable face (none found, or under 64 px) is still checked for AI generation, and the response says the face check was skipped. See [Deepfake signals](/guides/deepfake-signals).
 
 <Note>
-**Don't downscale or re-encode before sending.** Resolution is load-bearing for deepfake detection — send the original capture. Failed input validation (any 4xx) is never charged.
+**Don't downscale, re-encode or rotate before sending.** Deepfake detection reads fine pixel-level traces that resizing and re-compression destroy — send the original file. Failed input validation (any 4xx) is never charged.
 </Note>
 
 ## Threshold overrides
@@ -69,7 +70,7 @@ Invalid values return `400 INVALID_THRESHOLD`. See [Thresholds & scores](/guides
 
 ## Disabling the minimum face size gate
 
-If your images legitimately contain smaller faces — CCTV frames, wide-angle kiosks, archived photos — pass `min_face_check: false` (JSON body or multipart field) to skip the 224×224 gate and score the image anyway:
+If your images legitimately contain smaller faces — CCTV frames, wide-angle kiosks, archived photos — pass `min_face_check: false` (JSON body or multipart field) to skip liveness's 224×224 gate and score the image anyway (deepfake detection has no such gate to skip):
 
 ```json
 { "data": "<base64>", "min_face_check": false }

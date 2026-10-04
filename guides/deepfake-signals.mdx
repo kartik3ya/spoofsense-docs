@@ -1,0 +1,72 @@
+---
+title: "Deepfake signals"
+description: "What the two deepfake detectors check, and how to read the breakdown"
+---
+
+`/v1/deepfake_detection` runs two detectors on every image and reports both in a `signals` object:
+
+| Signal | Looks at | Catches | Runs when |
+|---|---|---|---|
+| `ai_generated` | The whole image | Images made or edited by generative AI: diffusion models, GPT-style image models, AI inpainting. Works on any content: faces, documents, products, art | Always |
+| `face_manipulation` | The largest face, cropped with some margin | Face swaps, AI face edits, lip-sync and reenactment frames, talking-head avatars | A face is found and it's at least 64 px |
+
+The image is `"real"` only if **neither** signal flags it. The top-level `genuine_score` is the lower of the two, so `decision` and `threshold` work exactly as on the other endpoints.
+
+```json Deepfake response
+{
+  "product": "deepfake",
+  "decision": "spoof",
+  "genuine_score": 0.141725,
+  "threshold": 0.5,
+  "spoof_type": null,
+  "latency_ms": 640,
+  "credits_remaining": 1238,
+  "session_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+  "request_id": "0f1e2d3c4b5a69788766554433221100",
+  "signals": {
+    "ai_generated":      { "decision": "real",  "genuine_score": 0.936734 },
+    "face_manipulation": { "decision": "spoof", "genuine_score": 0.141725,
+                           "status": "checked", "face_box": [71, 100, 136, 136] }
+  }
+}
+```
+
+That example is a face swap: the photo as a whole looks camera-made, but the face was replaced.
+
+## Fields
+
+| Field | Type | Meaning |
+|---|---|---|
+| `signals.*.decision` | `"real"` \| `"spoof"` \| `null` | This signal at your threshold. `null` when it didn't run |
+| `signals.*.genuine_score` | number \| `null` | Calibrated like the top-level score: `0.5` is the boundary, higher is more genuine |
+| `face_manipulation.status` | `"checked"` \| `"no_face"` \| `"face_too_small"` | Whether the face check ran |
+| `face_manipulation.face_box` | `[x, y, w, h]` | The face that was judged, in pixels of the image as sent (no EXIF rotation). Absent when no face was found |
+
+## Images without a face
+
+A face isn't required. If there's none, or the largest one is under 64 px, the face check is skipped and `ai_generated` decides alone:
+
+```json
+"signals": {
+  "ai_generated":      { "decision": "spoof", "genuine_score": 0.0417 },
+  "face_manipulation": { "decision": null, "genuine_score": null, "status": "face_too_small", "face_box": [210, 144, 62, 62] }
+}
+```
+
+If your flow needs a face (selfie onboarding, for example), check `face_manipulation.status === "checked"` on your side, or use `/v1/unified_detection`, whose liveness check rejects images without a usable face.
+
+## Thresholds
+
+Your org's deepfake threshold (default `0.5`) applies to both signals at once. At `0.5`, each signal sits at its identity-verification operating point: about 0.5% of genuine selfies rejected per signal, roughly 0.9% combined. A higher threshold catches more and rejects more genuine images. See [Thresholds & scores](/guides/thresholds).
+
+## Getting the best results
+
+- **Send the original file.** Resizing, re-compressing, screenshotting or rotating removes the fine traces the AI-image check reads.
+- **JPEG, PNG, WebP, AVIF, BMP, TIFF and GIF** work. HEIC doesn't, so convert iPhone photos first.
+- **Video:** sample frames (one per second is plenty) and send each one. There's no calibrated clip-level rule yet; flagging a clip when any frame is `"spoof"` is a reasonable start.
+
+## Known limits
+
+- Talking-head avatars and lip-sync from tools the model hasn't seen are the hardest case.
+- Heavily compressed or downscaled real photos get flagged a little more often.
+- Faces under 64 px aren't checked by `face_manipulation`. `ai_generated` still runs.

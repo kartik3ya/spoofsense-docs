@@ -78,7 +78,7 @@ description: "Your first liveness check in five minutes"
       -F "file=@selfie.jpg"
     ```
 
-    `/v1/unified_detection` runs both checks and returns `decision: "real"` only when **every** check passes, plus a per-product `checks` object.
+    `/v1/unified_detection` runs both checks and returns `decision: "real"` only when **every** check passes, plus a per-product `checks` object. Deepfake results also carry a `signals` breakdown (AI-generated image, face manipulation). See [Deepfake signals](/guides/deepfake-signals).
   </Step>
 </Steps>
 

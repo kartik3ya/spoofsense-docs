@@ -35,6 +35,7 @@ The threshold actually applied is echoed back in every response, so your logs al
 - Start at the default `0.5` and only move after measuring on your own traffic.
 - For [verification sessions](/verification-sessions/overview), thresholds are fixed **server-side at session creation** — the client can never loosen them.
 - On `/v1/unified_detection`, the overall `decision` is `"real"` only if **every** product's check passes its own threshold; the per-product outcomes are in `checks`.
+- Deepfake detection runs two detectors. Your deepfake threshold applies to both [signals](/guides/deepfake-signals), each calibrated so `0.5` is its boundary, so moving it tightens or loosens both together.
 
 ```json Unified response
 {
