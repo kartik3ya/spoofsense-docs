@@ -65,7 +65,7 @@
                 "example": {
                   "product": "deepfake",
                   "decision": "spoof",
-                  "genuine_score": 0.141725,
+                  "genuine_score": 0.139415,
                   "threshold": 0.5,
                   "spoof_type": null,
                   "latency_ms": 640,
@@ -74,8 +74,8 @@
                   "request_id": "0f1e2d3c4b5a69788766554433221100",
                   "signals": {
                     "content_credentials": { "decision": null, "genuine_score": null, "status": "not_found" },
-                    "ai_generated": { "decision": "real", "genuine_score": 0.936734 },
-                    "face_manipulation": { "decision": "spoof", "genuine_score": 0.141725, "status": "checked", "face_box": [71, 100, 136, 136] }
+                    "ai_generated": { "decision": "real", "genuine_score": 0.866742 },
+                    "face_manipulation": { "decision": "spoof", "genuine_score": 0.139415, "status": "checked", "face_box": [64, 82, 148, 148] }
                   }
                 }
               }
@@ -535,7 +535,10 @@
             "description": "Whole-image check for AI-generated or AI-edited content. Runs on every image, with or without a face.",
             "allOf": [
               { "$ref": "#/components/schemas/DeepfakeSignal" },
-              { "type": "object", "properties": { "status": { "type": "string", "enum": ["skipped"], "description": "Present only when Content Credentials decided and the model didn't run." } } }
+              { "type": "object", "properties": {
+                "status": { "type": "string", "enum": ["skipped"], "description": "Present only when Content Credentials decided and the model didn't run." },
+                "kind": { "type": "string", "enum": ["generated", "edited"], "description": "Present only when this signal flags the image: made from scratch by AI, or a real photo edited with AI. A hint, not a forensic finding." }
+              } }
             ]
           },
           "face_manipulation": {
