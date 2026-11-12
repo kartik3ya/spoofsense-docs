@@ -54,7 +54,7 @@
         "tags": ["Detection"],
         "summary": "Deepfake check",
         "operationId": "deepfakeDetection",
-        "description": "Checks whether an image is AI-generated, and whether the face in it has been manipulated (face swap, AI edit, lip-sync, reenactment). C2PA Content Credentials are checked first: a valid credential saying the image was made or edited with AI flags it without running the models. Otherwise both detectors run and are reported in `signals`; the decision is \"real\" only if neither flags the image. A face is not required: with no usable face (none found, or under 64 px) only the AI-image check runs. Costs 2 credits. Send the original file — resizing, re-compressing or rotating it first removes some of what the AI-image check reads.",
+        "description": "Checks whether an image is AI-generated, and whether the face in it has been manipulated (face swap, AI edit, lip-sync, reenactment). C2PA Content Credentials are checked first: a valid credential saying the image was made or edited with AI flags it without running the models. Otherwise both detectors run and are reported in `signals`; the decision is \"real\" only if neither flags the image. A face is not required: with no face found only the AI-image check runs. A face that is found must be at least 512×512 px, or the call returns 422 FACE_TOO_SMALL. Costs 2 credits. Send the original file — resizing, re-compressing or rotating it first removes some of what the AI-image check reads.",
         "requestBody": { "$ref": "#/components/requestBodies/DetectionInput" },
         "responses": {
           "200": {
@@ -433,7 +433,7 @@
     "requestBodies": {
       "DetectionInput": {
         "required": true,
-        "description": "The image, in any supported form. Max 10 MB. EXIF orientation is applied automatically. The detected face's bounding box must be at least 224×224 pixels, or the call returns 422 FACE_TOO_SMALL — pass `min_face_check: false` to skip that gate.",
+        "description": "The image, in any supported form. Max 10 MB. EXIF orientation is applied automatically. The detected face's bounding box must be at least 128×128 pixels for liveness (512×512 for deepfake, when it finds a face), or the call returns 422 FACE_TOO_SMALL — pass `min_face_check: false` to skip that gate.",
         "content": {
           "application/json": {
             "schema": {
@@ -462,7 +462,7 @@
                 "min_face_check": {
                   "type": "boolean",
                   "default": true,
-                  "description": "Set to false to disable the 224×224 minimum-face-size gate (422 FACE_TOO_SMALL) for this request. Small faces are upscaled before scoring, so accuracy degrades on faces well under 224 px — use only if your capture flow can't guarantee close-up faces. A face must still be detectable."
+                  "description": "Set to false to disable the minimum-face-size gate (128×128 liveness, 512×512 deepfake; 422 FACE_TOO_SMALL) for this request. Small faces are upscaled before scoring, so accuracy degrades on faces well under 128 px — use only if your capture flow can't guarantee close-up faces. A face must still be detectable."
                 }
               }
             },
@@ -475,7 +475,7 @@
               "properties": {
                 "file": { "type": "string", "format": "binary", "description": "The image file. Alias field name: `image`." },
                 "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
-                "min_face_check": { "type": "boolean", "default": true, "description": "\"false\" disables the 224×224 minimum-face-size gate for this request." }
+                "min_face_check": { "type": "boolean", "default": true, "description": "\"false\" disables the minimum-face-size gate (128×128 liveness, 512×512 deepfake) for this request." }
               }
             }
           },
@@ -548,7 +548,7 @@
               {
                 "type": "object",
                 "properties": {
-                  "status": { "type": "string", "enum": ["checked", "no_face", "face_too_small", "skipped"], "description": "Whether the face check ran. face_too_small = the largest face is under 64 px; skipped = Content Credentials decided." },
+                  "status": { "type": "string", "enum": ["checked", "no_face", "face_too_small", "skipped"], "description": "Whether the face check ran. face_too_small = the largest face is under 64 px (only possible with min_face_check: false); skipped = Content Credentials decided." },
                   "face_box": { "type": "array", "items": { "type": "integer" }, "minItems": 4, "maxItems": 4, "description": "[x, y, w, h] of the judged face, in pixels of the image as sent (no EXIF rotation). Absent when no face was found." }
                 },
                 "required": ["status"]
@@ -687,11 +687,11 @@
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "IMAGE_TOO_LARGE", "message": "Image too large (max 10 MB)" } } } }
       },
       "Unprocessable": {
-        "description": "INVALID_IMAGE · FACE_NOT_DETECTED · FACE_TOO_SMALL (face bounding box under 224×224 px) · IMAGE_BACKLIT — user-fixable, never charged. The face errors come from liveness.",
+        "description": "INVALID_IMAGE · FACE_NOT_DETECTED · FACE_TOO_SMALL (face bounding box under 128×128 px for liveness, or under 512×512 px when deepfake finds a face) · IMAGE_BACKLIT — user-fixable, never charged.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "FACE_NOT_DETECTED", "message": "No face found in the image" } } } }
       },
       "InvalidImage": {
-        "description": "INVALID_IMAGE — the file couldn't be decoded (HEIC isn't supported). Never charged. Deepfake has no face requirement, so it never returns FACE_NOT_DETECTED or FACE_TOO_SMALL.",
+        "description": "INVALID_IMAGE — the file couldn't be decoded (HEIC isn't supported). Never charged. FACE_TOO_SMALL — a face was found but it is under 512×512 px. Never charged. A face is not required, so deepfake never returns FACE_NOT_DETECTED.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": { "code": "INVALID_IMAGE", "message": "Invalid or unsupported image" } } } }
       },
       "SessionNotFound": {
